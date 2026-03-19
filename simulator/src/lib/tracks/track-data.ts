@@ -371,7 +371,12 @@ const classroomLabBWaypoints: TrackPoint[] = [
   { x: -36, z: 0 },
   { x: -34, z: -10 },
 ];
-
+// --- CUTOM S-TRACK WAYPOINTS ---
+const serpentWaypoints: TrackPoint[] = [
+  { x: 0, z: 0 }, { x: 10, z: 5 }, { x: 20, z: 15 }, { x: 30, z: 20 },
+  { x: 40, z: 15 }, { x: 50, z: 5 }, { x: 60, z: -5 }, { x: 70, z: -15 },
+  { x: 80, z: -20 }, { x: 90, z: -15 }, { x: 100, z: -5 }, { x: 110, z: 0 }
+];
 const classroomLabBObstacles: TrackObstacle[] = [
   { id: "table-b1", kind: "table", x: -18, z: 4, rotation: 0.05, scale: 1.05 },
   { id: "chair-b1a", kind: "chair", x: -22, z: 6, rotation: 0.9 },
@@ -486,6 +491,17 @@ export const TRACKS: TrackDef[] = [
     waypoints: graphToArray(ovalWaypoints),
     waypointsGraph: ovalWaypoints,
   },
+  // --- S-TRACK ADDED-INVIRONMENT
+  {
+    id: "serpent-s",
+    name: "The Serpent",
+    difficulty: "intermediate",
+    description: "A custom S-shaped challenge",
+    width: 5.0,
+    spawnPos: [0, 0.5, 0],
+    spawnRotation: computeSpawnRotation(0, 0, serpentWaypoints),
+    waypoints: serpentWaypoints,
+  },
   {
     id: "nascar-racing-track",
     name: "nascar racing track",
@@ -592,24 +608,3 @@ export const TRACKS: TrackDef[] = [
 export function getTrack(id: string): TrackDef {
   return TRACKS.find((t) => t.id === id) || TRACKS[0];
 }
-// --- S Track ---
-export const sTrack = {
-  id: "s-track",
-  name: "The Serpent",
-  // Coordinates representing an S-shape
-  points: [
-    { x: 0, y: 0 },
-    { x: 10, y: 5 },
-    { x: 20, y: 15 },
-    { x: 30, y: 20 }, // Peak of first curve
-    { x: 40, y: 15 },
-    { x: 50, y: 5 },
-    { x: 60, y: -5 },
-    { x: 70, y: -15 },
-    { x: 80, y: -20 }, // Trough of second curve
-    { x: 90, y: -15 },
-    { x: 100, y: -5 },
-    { x: 110, y: 0 }
-  ],
-  width: 10,
-};
