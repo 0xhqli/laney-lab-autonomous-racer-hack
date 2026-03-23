@@ -112,6 +112,105 @@ if selected_id != active_id:
 else:
     st.sidebar.caption("This model is currently active.")
 
+# Model details expander
+if selected_id:
+    model = get_model(selected_id)
+    if model:
+        with st.sidebar.expander("📋 Model Details", expanded=False):
+            # Basic info
+            st.markdown(f"### {model.display_name}")
+            st.markdown(f"**ID:** `{model.id}`")
+            st.markdown(f"**Source:** {model.source_type}")
+            st.markdown(f"**Status:** {model.status}")
+            st.markdown(f"**Version:** {model.version}")
+            
+            # Simple description based on what we know
+            st.markdown("---")
+            st.markdown("**What it does:**")
+            if model.trained_for:
+                st.markdown(f"Trained for: {model.trained_for}")
+            else:
+                st.markdown("Autonomous driving model for the DeepRacer vehicle")
+            
+            # Usage scenarios
+            st.markdown("**When to use it:**")
+            if model.source_type == "class":
+                st.markdown("• Classroom demonstration and learning")
+                st.markdown("• Testing autonomous driving concepts")
+                st.markdown("• Educational purposes")
+            else:
+                st.markdown("• Production racing scenarios")
+                st.markdown("• Performance testing")
+                st.markdown("• Competition environments")
+            
+            # Technical details
+            st.markdown("---")
+            st.markdown("**Technical Details:**")
+            st.markdown(f"• **Format:** {model.format.upper()}")
+            
+            # Author/Team info
+            if model.author:
+                st.markdown(f"• **Author:** {model.author}")
+            if model.team:
+                st.markdown(f"• **Team:** {model.team}")
+            
+            # Model file info
+            if model.local_path:
+                try:
+                    model_path = Path(model.local_path)
+                    if model_path.exists():
+                        size_mb = model_path.stat().st_size / (1024 * 1024)
+                        st.markdown(f"• **Model Size:** {size_mb:.1f} MB")
+                        st.markdown(f"• **File:** `{model_path.name}`")
+                except Exception:
+                    st.markdown(f"• **Path:** `{model.local_path}`")
+            
+            if model.remote_path:
+                st.markdown(f"• **Remote:** `{model.remote_path}`")
+            
+            # Additional info
+            if model.source_notes:
+                st.markdown(f"• **Notes:** {model.source_notes}")
+            
+            # Creation info
+            st.markdown("---")
+            st.markdown("**Added:**")
+            if model.date_added:
+                try:
+                    if isinstance(model.date_added, str):
+                        created_dt = datetime.fromisoformat(model.date_added.replace('Z', '+00:00'))
+                        st.markdown(f"• {created_dt.strftime('%Y-%m-%d %H:%M')}")
+                except Exception:
+                    st.markdown(f"• {model.date_added}")
+            else:
+                st.markdown("• Unknown")
+            
+            # Tags
+            if model.tags:
+                st.markdown("**Tags:**")
+                tags_str = " ".join([f"`{tag}`" for tag in model.tags[:5]])
+                if len(model.tags) > 5:
+                    tags_str += f" +{len(model.tags)-5} more"
+                st.markdown(tags_str)
+            
+            # Evaluation metrics (if available)
+            evals = get_evals_for_model(selected_id)
+            if evals:
+                st.markdown("---")
+                st.markdown("**Recent Evaluations:**")
+                # Show latest 3 evaluations
+                for eval in evals[:3]:
+                    eval_time = eval.get("timestamp", "")[:16] if eval.get("timestamp") else "Unknown"
+                    st.markdown(f"• **{eval_time}**")
+                    if "metrics" in eval:
+                        for metric, value in eval["metrics"].items():
+                            if isinstance(value, float):
+                                st.markdown(f"  - {metric}: {value:.3f}")
+                            else:
+                                st.markdown(f"  - {metric}: {value}")
+                    if eval.get("notes"):
+                        st.markdown(f"  - *{eval['notes']}*")
+
 # Vehicle runtime status
 st.sidebar.markdown("---")
 st.sidebar.subheader("Vehicle Runtime")
