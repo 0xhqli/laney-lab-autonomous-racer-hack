@@ -275,6 +275,7 @@ class NavigationPlanner:
     def _update_frontier_target(self, odom: OdometryState) -> None:
         """
         Refresh the frontier target from the occupancy map.
+        Prioritizes low-confidence areas for re-exploration.
         Called periodically, not every frame.
         """
         if self.world_map is None:
@@ -284,6 +285,29 @@ class NavigationPlanner:
         if self._frontier_target is not None and elapsed < 3.0:
             return  # reuse existing target for a few seconds
 
+        # First, check if there are low-confidence areas to revisit
+        low_conf_areas = self.world_map.get_low_confidence_areas(max_results=5)  # type: ignore[union-attr]
+        
+        if low_conf_areas:
+            # Pick the nearest low-confidence area
+            import math
+            nearest_area = None
+            nearest_dist = float('inf')
+            
+            for x, y, conf in low_conf_areas:
+                dist = math.sqrt((x - odom.x)**2 + (y - odom.y)**2)
+                if dist < nearest_dist:
+                    nearest_dist = dist
+                    nearest_area = (x, y)
+            
+            # If low-confidence area is within reasonable range, target it
+            if nearest_area and nearest_dist < 30.0:  # 30 feet max for re-exploration
+                self._frontier_target = nearest_area
+                self._frontier_check_time = time.time()
+                log.debug("Targeting low-confidence area at (%.1f, %.1f)", *nearest_area)
+                return
+        
+        # Otherwise, find normal frontier (unexplored area)
         target = self.world_map.nearest_frontier(odom.x, odom.y)  # type: ignore[union-attr]
         self._frontier_target = target
         self._frontier_check_time = time.time()

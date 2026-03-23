@@ -45,6 +45,10 @@ class MapConfig:
     depth_cone_half_angle: float = 0.52  # ~30 degrees half-angle of camera FOV
     num_depth_rays: int = 15      # rays cast per frame for map update
     free_decay_frames: int = 0    # 0 = no decay; >0 = FREE cells revert after N unvisited frames
+    # Re-exploration settings
+    min_confidence: int = 3       # minimum observations to trust a cell
+    confidence_decay: bool = True # reduce confidence on conflicting observations
+    revisit_bonus: int = 2        # extra confidence when revisiting known areas
     save_version: int = 1
 
 
@@ -77,6 +81,14 @@ class OccupancyMap:
         )
         self._visit_count = np.zeros(
             (self._grid_size, self._grid_size), dtype=np.uint16
+        )
+        # Confidence tracking for each cell (0-255, higher = more confident)
+        self._confidence = np.zeros(
+            (self._grid_size, self._grid_size), dtype=np.uint8
+        )
+        # Track conflicting observations for quality assessment
+        self._conflicts = np.zeros(
+            (self._grid_size, self._grid_size), dtype=np.uint8
         )
         self._total_cells = self._grid_size * self._grid_size
         self._updates = 0
@@ -159,7 +171,7 @@ class OccupancyMap:
             else:
                 obstacle_dist = max_range  # nothing detected, full range is free
 
-            # Walk along the ray, marking cells
+            # Walk along the ray, marking cells with confidence tracking
             step_size = self.config.cell_size_ft * 0.5
             dist = 0.0
             while dist < obstacle_dist:
@@ -168,8 +180,21 @@ class OccupancyMap:
                 row, col = self._world_to_grid(rx, ry)
                 if not self._in_bounds(row, col):
                     break
-                if self._grid[row, col] != OCCUPIED:
+                
+                # Update cell with confidence
+                old_state = self._grid[row, col]
+                if old_state != OCCUPIED:
+                    # FREE cells can be improved with more observations
                     self._grid[row, col] = FREE
+                    # Increase confidence, with bonus for revisiting
+                    if old_state == FREE:
+                        # Revisiting known free space - increase confidence more
+                        self._confidence[row, col] = min(255, 
+                            self._confidence[row, col] + self.config.revisit_bonus)
+                    else:
+                        # First time discovering free space
+                        self._confidence[row, col] = min(255, 
+                            self._confidence[row, col] + 1)
                 dist += step_size
 
             # Mark the endpoint as OCCUPIED if obstacle was detected
@@ -178,7 +203,22 @@ class OccupancyMap:
                 oy = y_ft + obstacle_dist * math.sin(ray_angle)
                 orow, ocol = self._world_to_grid(ox, oy)
                 if self._in_bounds(orow, ocol):
-                    self._grid[orow, ocol] = OCCUPIED
+                    old_state = self._grid[orow, ocol]
+                    if old_state == FREE and self.config.confidence_decay:
+                        # Conflict! Previously marked as free, now seeing obstacle
+                        self._conflicts[orow, ocol] += 1
+                        # Reduce confidence but don't immediately override
+                        if self._confidence[orow, ocol] > self.config.min_confidence:
+                            self._confidence[orow, ocol] = max(0, 
+                                self._confidence[orow, ocol] - 2)
+                        else:
+                            # Low confidence - allow state change
+                            self._grid[orow, ocol] = OCCUPIED
+                            self._confidence[orow, ocol] = 1
+                    else:
+                        self._grid[orow, ocol] = OCCUPIED
+                        self._confidence[orow, ocol] = min(255, 
+                            self._confidence[orow, ocol] + 1)
         
         # Update timestamp for real-time dashboard
         from datetime import datetime
@@ -200,6 +240,34 @@ class OccupancyMap:
 
     def is_unknown(self, x_ft: float, y_ft: float) -> bool:
         return self.cell_state(x_ft, y_ft) == UNKNOWN
+
+    def get_confidence(self, x_ft: float, y_ft: float) -> int:
+        """Return confidence level (0-255) for the cell at (x, y)."""
+        row, col = self._world_to_grid(x_ft, y_ft)
+        return int(self._confidence[row, col])
+
+    def needs_reexploration(self, x_ft: float, y_ft: float) -> bool:
+        """Return True if a cell has low confidence or conflicts and should be re-explored."""
+        row, col = self._world_to_grid(x_ft, y_ft)
+        return (self._confidence[row, col] < self.config.min_confidence or 
+                self._conflicts[row, col] > 0)
+
+    def get_low_confidence_areas(self, max_results: int = 10) -> list[tuple[float, float, int]]:
+        """
+        Get coordinates of cells with low confidence that need re-exploration.
+        Returns list of (x, y, confidence) tuples.
+        """
+        low_conf = []
+        for row in range(self._grid_size):
+            for col in range(self._grid_size):
+                if (self._confidence[row, col] < self.config.min_confidence or 
+                    self._conflicts[row, col] > 0):
+                    x, y = self._grid_to_world(row, col)
+                    low_conf.append((x, y, self._confidence[row, col]))
+        
+        # Sort by confidence (lowest first) and return top results
+        low_conf.sort(key=lambda t: t[2])
+        return low_conf[:max_results]
 
     def nearest_frontier(
         self, x_ft: float, y_ft: float, max_search_radius_ft: float = 50.0
@@ -271,6 +339,12 @@ class OccupancyMap:
         occupied_count = int(np.sum(self._grid == OCCUPIED))
         unknown_count = int(np.sum(self._grid == UNKNOWN))
         total = self._total_cells
+        # Calculate confidence statistics
+        high_conf_count = int(np.sum(self._confidence >= self.config.min_confidence))
+        low_conf_count = int(np.sum(self._confidence < self.config.min_confidence))
+        conflict_count = int(np.sum(self._conflicts > 0))
+        avg_confidence = float(np.mean(self._confidence)) if total > 0 else 0.0
+        
         return {
             "grid_size": self._grid_size,
             "cell_size_ft": self.config.cell_size_ft,
@@ -281,31 +355,70 @@ class OccupancyMap:
             "explored_pct": round(100 * (free_count + occupied_count) / total, 2),
             "free_area_sq_ft": round(free_count * self.config.cell_size_ft ** 2, 1),
             "updates": self._updates,
+            # Confidence metrics
+            "high_confidence_cells": high_conf_count,
+            "low_confidence_cells": low_conf_count,
+            "conflict_cells": conflict_count,
+            "avg_confidence": round(avg_confidence, 1),
+            "confidence_threshold": self.config.min_confidence,
         }
 
     # -- Visualization -------------------------------------------------------
 
-    def to_image(self, car_x: float = 0, car_y: float = 0) -> np.ndarray:
+    def to_image(self, car_x: float = 0, car_y: float = 0, show_confidence: bool = True) -> np.ndarray:
         """
         Render the map as an RGB image for the dashboard.
 
         Colors:
           UNKNOWN  = dark gray (40, 40, 40)
-          FREE     = white (240, 240, 240)
-          OCCUPIED = red (200, 60, 60)
+          FREE     = white (240, 240, 240) -> shaded by confidence
+          OCCUPIED = red (200, 60, 60) -> shaded by confidence
           Car      = blue dot
+          Low confidence = yellow tint
+          Conflicts = purple tint
         """
         img = np.full((self._grid_size, self._grid_size, 3), 40, dtype=np.uint8)
 
-        free_mask = self._grid == FREE
-        occupied_mask = self._grid == OCCUPIED
-
-        img[free_mask] = [240, 240, 240]
-        img[occupied_mask] = [200, 60, 60]
+        # Render cells with confidence shading
+        for row in range(self._grid_size):
+            for col in range(self._grid_size):
+                state = self._grid[row, col]
+                conf = self._confidence[row, col]
+                conflict = self._conflicts[row, col] > 0
+                
+                if state == FREE:
+                    # Base white, darken based on low confidence
+                    if show_confidence and conf < self.config.min_confidence:
+                        # Yellow tint for low confidence free space
+                        intensity = int(240 * (0.5 + 0.5 * conf / self.config.min_confidence))
+                        img[row, col] = [intensity, intensity, int(0.7 * intensity)]
+                    else:
+                        img[row, col] = [240, 240, 240]
+                elif state == OCCUPIED:
+                    # Base red, adjust based on confidence
+                    if show_confidence and conf < self.config.min_confidence:
+                        # Purple tint for low confidence obstacles
+                        intensity = int(200 * (0.5 + 0.5 * conf / self.config.min_confidence))
+                        img[row, col] = [intensity, int(0.3 * intensity), intensity]
+                    elif conflict:
+                        # Bright purple for conflicts
+                        img[row, col] = [200, 60, 200]
+                    else:
+                        img[row, col] = [200, 60, 60]
+                # UNKNOWN stays dark gray
 
         # Draw car position
         car_row, car_col = self._world_to_grid(car_x, car_y)
         cv2.circle(img, (car_col, car_row), 3, (60, 120, 255), -1)
+        
+        # Draw confidence indicator legend if showing confidence
+        if show_confidence:
+            # Small legend in top-right corner
+            legend_x, legend_y = self._grid_size - 60, 10
+            cv2.rectangle(img, (legend_x, legend_y), (legend_x + 50, legend_y + 40), (20, 20, 20), -1)
+            cv2.putText(img, "High", (legend_x + 2, legend_y + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (240, 240, 240), 1)
+            cv2.putText(img, "Low", (legend_x + 2, legend_y + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 140), 1)
+            cv2.putText(img, "Conflict", (legend_x + 2, legend_y + 38), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (200, 60, 200), 1)
 
         return img
 
@@ -334,12 +447,14 @@ class OccupancyMap:
     # -- Persistence ---------------------------------------------------------
 
     def save(self, path: Path) -> None:
-        """Save the map grid and metadata to disk."""
+        """Save the map grid, confidence, and metadata to disk."""
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(
             str(path),
             grid=self._grid,
             visit_count=self._visit_count,
+            confidence=self._confidence,
+            conflicts=self._conflicts,
         )
         # Save metadata alongside
         meta_path = path.with_suffix(".json")
@@ -350,10 +465,15 @@ class OccupancyMap:
             "map_size_ft": self.config.map_size_ft,
             "origin_offset_ft": self.config.origin_offset_ft,
             "stats": self.stats,
+            "config": {
+                "min_confidence": self.config.min_confidence,
+                "confidence_decay": self.config.confidence_decay,
+                "revisit_bonus": self.config.revisit_bonus,
+            }
         }
         meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-        log.info("Map saved to %s (%.1f%% explored, %d updates)",
-                 path, self.stats["explored_pct"], self._updates)
+        log.info("Map saved to %s (%.1f%% explored, %d updates, %.1f avg confidence)",
+                 path, self.stats["explored_pct"], self._updates, self.stats["avg_confidence"])
 
     def load(self, path: Path) -> bool:
         """Load a previously saved map. Returns True if successful."""
@@ -367,8 +487,19 @@ class OccupancyMap:
                 self._grid = loaded_grid
                 if "visit_count" in data:
                     self._visit_count = data["visit_count"]
-                log.info("Map loaded from %s (%.1f%% explored)",
-                         path, self.stats["explored_pct"])
+                # Load confidence tracking if available (newer format)
+                if "confidence" in data:
+                    self._confidence = data["confidence"]
+                else:
+                    # Old format - initialize confidence based on cell states
+                    self._confidence = np.where(self._grid == UNKNOWN, 0, 
+                                               np.where(self._grid == FREE, 5, 3))
+                if "conflicts" in data:
+                    self._conflicts = data["conflicts"]
+                else:
+                    self._conflicts = np.zeros_like(self._grid, dtype=np.uint8)
+                log.info("Map loaded from %s (%.1f%% explored, %.1f avg confidence)",
+                         path, self.stats["explored_pct"], self.stats["avg_confidence"])
                 return True
             else:
                 log.warning("Map size mismatch: saved %s vs expected %s -- starting fresh",

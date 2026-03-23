@@ -702,11 +702,32 @@ with tab_explorer:
             st.metric("Obstacles", map_stats.get("occupied_cells", 0))
             st.metric("Breadcrumbs", explorer_status.get("breadcrumbs", 0))
             st.metric("Updates", map_stats.get("updates", 0))
+            
+            # Confidence metrics
+            st.markdown("---")
+            st.markdown("**Map Confidence**")
+            avg_conf = map_stats.get("avg_confidence", 0)
+            threshold = map_stats.get("confidence_threshold", 3)
+            
+            # Color code confidence
+            if avg_conf >= threshold:
+                conf_color = "normal"
+            elif avg_conf >= threshold * 0.7:
+                conf_color = "off"
+            else:
+                conf_color = "inverse"
+            
+            st.metric("Avg Confidence", f"{avg_conf:.1f}", delta=None, delta_color=conf_color)
+            st.metric("High Conf.", map_stats.get("high_confidence_cells", 0))
+            st.metric("Low Conf.", map_stats.get("low_confidence_cells", 0))
+            if map_stats.get("conflict_cells", 0) > 0:
+                st.metric("Conflicts", map_stats.get("conflict_cells", 0), delta="⚠️", delta_color="inverse")
 
         with map_col1:
             st.caption(
                 "Dark gray = unexplored, white = free space, "
-                "red = obstacle, blue dot = car"
+                "red = obstacle, blue dot = car. "
+                "Yellow = low confidence, Purple = conflicts"
             )
             # Real-time map image with refresh controls
             auto_refresh = st.checkbox("Auto-refresh map (2s)", value=True, key="map_auto_refresh")
@@ -771,6 +792,25 @@ with tab_explorer:
         
         with col2:
             st.caption("Map saves automatically when exploration stops, but you can also save manually.")
+        
+        # Re-exploration suggestions
+        if st.button("🔄 Find Areas to Re-explore", use_container_width=True):
+            try:
+                req = urllib.request.Request(
+                    f"{VEHICLE_RUNTIME_URL}/explorer/reexplore?max_results=5",
+                    method="GET"
+                )
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    data = json.loads(resp.read().decode())
+                    if data.get("areas"):
+                        st.success("Found areas that need re-exploration:")
+                        for i, area in enumerate(data["areas"][:3], 1):
+                            st.write(f"{i}. Position ({area['x']:.1f}, {area['y']:.1f}) - confidence: {area['confidence']:.1f}")
+                        st.caption("The navigator will prioritize these areas on the next exploration run.")
+                    else:
+                        st.info("No low-confidence areas found. Map looks good!")
+            except Exception:
+                st.error("Failed to get re-exploration suggestions")
         
         # Auto-refresh logic
         if auto_refresh and explorer_status and explorer_status.get("mode") == "exploring":

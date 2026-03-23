@@ -310,3 +310,15 @@ def explorer_backend_info():
         return info
     except Exception:
         return {"depth_backend": "unknown", "behavior_backend": "unknown"}
+
+
+@app.get("/explorer/reexplore")
+def explorer_reexplore_areas(max_results: int = 10):
+    """Get areas that need re-exploration due to low confidence."""
+    if not hasattr(app.state.runtime, "explorer") or not app.state.runtime.explorer:
+        return {"areas": []}
+    try:
+        areas = app.state.runtime.explorer.world_map.get_low_confidence_areas(max_results)
+        return {"areas": [{"x": x, "y": y, "confidence": conf} for x, y, conf in areas]}
+    except Exception:
+        return {"areas": []}
