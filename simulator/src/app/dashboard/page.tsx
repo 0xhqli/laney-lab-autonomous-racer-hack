@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import {
   ChevronRight, Database, Trophy, Timer,
@@ -57,8 +57,7 @@ export default function DashboardPage() {
   const [showHelp, setShowHelp] = useState(() => {
     // Lazy initializer: SSR guard needed because localStorage is browser-only.
     // Default to showing help unless the user has previously dismissed it.
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('dashboard-help-dismissed') !== 'true';
+    return typeof window !== 'undefined' && localStorage.getItem('dashboard-help-dismissed') !== 'true';
   });
   const [localSyncEntries, setLocalSyncEntries] = useState<RunSyncEntry[]>([]);
   const exportRef = useRef<HTMLDivElement>(null);
@@ -149,7 +148,7 @@ export default function DashboardPage() {
     deleteRuns(ids);
     setRuns(getRuns());
     setStats(getStats());
-    if (selectedRun && ids.includes(selectedRun.id)) {
+    if (selectedRun && new Set(ids).has(selectedRun.id)) {
       setSelectedRun(null);
     }
   }
@@ -204,8 +203,16 @@ export default function DashboardPage() {
     localStorage.setItem('dashboard-help-dismissed', 'true');
   }
 
-  const manualRuns = runs.filter((r) => r.driveMode === 'manual');
-  const aiRuns = runs.filter((r) => r.driveMode === 'ai');
+  // Single pass instead of two separate filter calls.
+  const { manualRuns, aiRuns } = useMemo(() => {
+    const manual: TrainingRun[] = [];
+    const ai: TrainingRun[] = [];
+    for (const r of runs) {
+      if (r.driveMode === 'manual') manual.push(r);
+      else ai.push(r);
+    }
+    return { manualRuns: manual, aiRuns: ai };
+  }, [runs]);
   // Prefer cloud-aggregated stats (team-wide) over local stats when available.
   const totalRuns = remoteSummary?.completed_runs ?? runs.length;
   const totalLaps = remoteSummary?.completed_laps ?? stats?.totalLaps ?? 0;
@@ -461,14 +468,18 @@ export default function DashboardPage() {
 // lap time progression chart, and speed distribution analysis.
 function MyDrivingTab({ runs, manualRuns, aiRuns, stats }: { runs: TrainingRun[]; manualRuns: TrainingRun[]; aiRuns: TrainingRun[]; stats: AccumulatedStats | null }) {
   // Aggregate runs by track so each track shows a combined run/lap/frame count.
-  const trackBreakdown: Record<string, { runs: number; laps: number; frames: number }> = {};
-  for (const r of runs) {
-    const existing = trackBreakdown[r.trackId] || { runs: 0, laps: 0, frames: 0 };
-    existing.runs++;
-    existing.laps += r.lapCount;
-    existing.frames += r.frames;
-    trackBreakdown[r.trackId] = existing;
-  }
+  // Memoized so it only recomputes when the runs array changes.
+  const trackBreakdown = useMemo(() => {
+    const breakdown: Record<string, { runs: number; laps: number; frames: number }> = {};
+    for (const r of runs) {
+      const existing = breakdown[r.trackId] || { runs: 0, laps: 0, frames: 0 };
+      existing.runs++;
+      existing.laps += r.lapCount;
+      existing.frames += r.frames;
+      breakdown[r.trackId] = existing;
+    }
+    return breakdown;
+  }, [runs]);
 
   return (
     <div className="space-y-6">
@@ -594,12 +605,16 @@ function CloudTab({
 }) {
   const [busyActiveVersion, setBusyActiveVersion] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const syncCounts = {
-    total: localSyncEntries.length,
-    synced: localSyncEntries.filter((e) => e.status === 'synced').length,
-    pending: localSyncEntries.filter((e) => e.status === 'pending' || e.status === 'syncing').length,
-    error: localSyncEntries.filter((e) => e.status === 'error').length,
-  };
+  // Single pass instead of three separate filter calls.
+  const syncCounts = localSyncEntries.reduce(
+    (acc, e) => {
+      if (e.status === 'synced') acc.synced++;
+      else if (e.status === 'pending' || e.status === 'syncing') acc.pending++;
+      else if (e.status === 'error') acc.error++;
+      return acc;
+    },
+    { total: localSyncEntries.length, synced: 0, pending: 0, error: 0 },
+  );
 
   if (!apiConfigured) {
     return (
