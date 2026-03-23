@@ -15,6 +15,8 @@ import { captureFrameFromRenderTarget, resetPendingCapturedFrames } from '@/lib/
 export function CarPOVCamera() {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
+  // Offscreen render target sized to match the capture resolution (e.g. 160×120).
+  // Linear filtering keeps pixel readback accurate for the JPEG encoder.
   const renderTarget = useMemo(() => {
     const target = new THREE.WebGLRenderTarget(CAPTURE_CONFIG.width, CAPTURE_CONFIG.height);
     target.texture.colorSpace = THREE.SRGBColorSpace;
@@ -23,6 +25,8 @@ export function CarPOVCamera() {
     target.depthBuffer = true;
     return target;
   }, []);
+  // Dedicated perspective camera for the car's forward-facing POV.
+  // Not attached to the scene graph — positioned manually each frame.
   const povCamera = useMemo(
     () => new THREE.PerspectiveCamera(CAPTURE_CONFIG.cameraFOV, CAPTURE_CONFIG.width / CAPTURE_CONFIG.height, 0.01, 250),
     [],

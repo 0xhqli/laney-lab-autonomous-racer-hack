@@ -3,6 +3,11 @@
 import { useCapturePreviewStore } from '@/lib/capture/capture-preview-store';
 import { Camera, Eye, EyeOff } from 'lucide-react';
 
+/**
+ * Picture-in-picture camera feed overlay — shows what the AI model sees (160×120 JPEG preview).
+ * The user can toggle visibility with the Eye button. The REC indicator lights up
+ * red while frames are being captured.
+ */
 export function CameraFeed() {
   const previewDataUrl = useCapturePreviewStore((s) => s.previewDataUrl);
   const bufferedFrames = useCapturePreviewStore((s) => s.bufferedFrames);

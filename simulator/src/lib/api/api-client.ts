@@ -102,6 +102,11 @@ export interface ListTrainingJobsResponsePayload {
   next_cursor: string | null;
 }
 
+/**
+ * Returns the API base URL.
+ * Reads NEXT_PUBLIC_API_URL first; falls back to the current page's origin so
+ * the Next.js API routes work when the app is self-hosting the backend.
+ */
 export function getApiBaseUrl(): string | null {
   const raw = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (raw) return raw.replace(/\/+$/, '');
@@ -111,6 +116,9 @@ export function getApiBaseUrl(): string | null {
   return null;
 }
 
+/**
+ * Typed wrapper around fetch that enforces JSON content-type and throws on non-2xx responses.
+ */
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     ...init,
@@ -125,6 +133,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Returns true when the API base URL is available (i.e. the backend is reachable). */
 export function isApiConfigured(): boolean {
   return getApiBaseUrl() !== null;
 }
@@ -133,6 +142,7 @@ export interface ActiveModelPayload {
   active_model_version: string | null;
 }
 
+/** Fetches the model version currently marked as "active" on the server. */
 export async function fetchActiveModelVersion(): Promise<string | null> {
   const base = getApiBaseUrl();
   if (!base) return null;
@@ -140,12 +150,14 @@ export async function fetchActiveModelVersion(): Promise<string | null> {
   return payload.active_model_version ?? null;
 }
 
+/** Returns the download URL for the ONNX artifact of a specific model version. */
 export function getModelOnnxDownloadUrl(modelVersion: string): string {
   const base = getApiBaseUrl();
   if (!base) throw new Error('NEXT_PUBLIC_API_URL is not configured');
   return `${base}/api/models/${encodeURIComponent(modelVersion)}/artifacts/onnx`;
 }
 
+/** Lists the most recent trained models from the server. */
 export async function listModels(limit = 20): Promise<ModelRecordPayload[]> {
   const base = getApiBaseUrl();
   if (!base) return [];
@@ -153,6 +165,7 @@ export async function listModels(limit = 20): Promise<ModelRecordPayload[]> {
   return payload.items;
 }
 
+/** Lists the most recent training jobs from the server. */
 export async function listTrainingJobs(limit = 20): Promise<TrainingJobRecordPayload[]> {
   const base = getApiBaseUrl();
   if (!base) return [];
@@ -160,6 +173,7 @@ export async function listTrainingJobs(limit = 20): Promise<TrainingJobRecordPay
   return payload.items;
 }
 
+/** Lists the most recent runs recorded on the server. */
 export async function listRemoteRuns(limit = 20): Promise<RunRecordPayload[]> {
   const base = getApiBaseUrl();
   if (!base) return [];
@@ -167,6 +181,10 @@ export async function listRemoteRuns(limit = 20): Promise<RunRecordPayload[]> {
   return payload.items;
 }
 
+/**
+ * Fetches aggregated run statistics from the server.
+ * Falls back to the legacy /api/stats endpoint for older deployments.
+ */
 export async function getRemoteRunsSummary(): Promise<RunsSummaryPayload | null> {
   const base = getApiBaseUrl();
   if (!base) return null;
@@ -181,6 +199,7 @@ export async function getRemoteRunsSummary(): Promise<RunsSummaryPayload | null>
   }
 }
 
+/** Sets the active model version on the server (used by the dashboard). */
 export async function setActiveModelVersion(modelVersion: string): Promise<void> {
   const base = getApiBaseUrl();
   if (!base) throw new Error('NEXT_PUBLIC_API_URL is not configured');
@@ -190,6 +209,7 @@ export async function setActiveModelVersion(modelVersion: string): Promise<void>
   });
 }
 
+/** Creates a new training job on the server with the given dataset and hyperparameter config. */
 export async function createTrainingJob(payload: {
   dataset?: Record<string, unknown>;
   hyperparams?: Record<string, unknown>;
@@ -203,6 +223,7 @@ export async function createTrainingJob(payload: {
   });
 }
 
+/** Creates a new run record on the server and returns upload URLs for artifacts. */
 export async function createRemoteRun(payload: CreateRunRequestPayload): Promise<CreateRunResponsePayload> {
   const base = getApiBaseUrl();
   if (!base) throw new Error('NEXT_PUBLIC_API_URL is not configured');
@@ -212,6 +233,10 @@ export async function createRemoteRun(payload: CreateRunRequestPayload): Promise
   });
 }
 
+/**
+ * Uploads a binary artifact (frames ZIP or controls CSV) to the provided URL
+ * using multipart form data.
+ */
 export async function uploadRunArtifact(url: string, file: Blob, filename: string): Promise<void> {
   const form = new FormData();
   form.append('file', file, filename);
@@ -221,6 +246,7 @@ export async function uploadRunArtifact(url: string, file: Blob, filename: strin
   }
 }
 
+/** Marks a run as completed on the server and writes final stats (lap count, duration, etc.). */
 export async function finalizeRemoteRun(runId: string, payload: FinalizeRunRequestPayload): Promise<void> {
   const base = getApiBaseUrl();
   if (!base) throw new Error('NEXT_PUBLIC_API_URL is not configured');

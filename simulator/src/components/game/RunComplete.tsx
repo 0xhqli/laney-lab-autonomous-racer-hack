@@ -99,10 +99,12 @@ export function RunComplete() {
 
   if (mode !== 'run-complete') return null;
 
+  /** Returns to the main menu without saving again (data was already saved on mount). */
   function backToMenu() {
     useGameStore.getState().setMode('menu');
   }
 
+  /** Exports the frame capture for the just-completed run as a ZIP and downloads it. */
   async function downloadRunCapture() {
     if (!savedRun) return;
     setDownloadingCapture(true);

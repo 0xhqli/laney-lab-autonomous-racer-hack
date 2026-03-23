@@ -16,6 +16,11 @@ function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+/**
+ * Converts an RGBA pixel array (HWC layout, uint8 0–255) to a float32 tensor
+ * in NCHW layout (batch=1, channels=3, height, width) normalized to 0–1.
+ * This matches the input format expected by the trained PyTorch/ONNX model.
+ */
 function rgbaToNchwFloat32(rgba: Uint8ClampedArray, width: number, height: number): Float32Array {
   const hw = width * height;
   const out = new Float32Array(3 * hw);
@@ -28,6 +33,15 @@ function rgbaToNchwFloat32(rgba: Uint8ClampedArray, width: number, height: numbe
   return out;
 }
 
+/**
+ * Background ONNX inference runner — renders nothing but drives the AI steering.
+ * On each tick (every 100 ms while in autonomous mode) it:
+ *   1. Checks if a new camera frame is available.
+ *   2. Runs the ONNX model to predict a steering value.
+ *   3. Writes the prediction to the AI driver store for Car3D to consume.
+ * Also periodically reloads the model from the server (every 30 s) so a
+ * newly trained model is picked up without a page reload.
+ */
 export function ModelInferenceRunner(props: {
   selectionMode: 'active' | 'pinned';
   pinnedModelVersion: string | null;
@@ -52,6 +66,11 @@ export function ModelInferenceRunner(props: {
       return () => undefined;
     }
 
+    /**
+     * Downloads and creates the ONNX inference session if it isn't loaded yet,
+     * or if the target version has changed. `force` bypasses the refresh interval
+     * cache and is used when the target version is known to have changed.
+     */
     async function ensureModelSession(force = false) {
       if (loadPromise) {
         return loadPromise;
@@ -119,6 +138,12 @@ export function ModelInferenceRunner(props: {
       return loadPromise;
     }
 
+    /**
+     * Runs one inference cycle: grabs the latest camera frame, runs the ONNX
+     * session, and writes the predicted steering to the AI driver store.
+     * Skips silently if the game isn't in autonomous mode, the session isn't ready,
+     * or a previous inference is still in-flight.
+     */
     async function tick() {
       if (disposed) return;
 

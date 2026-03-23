@@ -25,9 +25,11 @@ const STEER_RAMP = 5.0; // how fast steering moves toward target (per second)
 const THROTTLE_RAMP = 3.0; // how fast throttle moves toward target (per second)
 const STEER_DAMP = 3.0; // auto-recenter damping when no steer input
 
+/** Clamps v to the [min, max] range. */
 function clamp(v: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
+/** Linear interpolation between a and b by factor t (0 = a, 1 = b). */
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
@@ -248,6 +250,10 @@ export function Car3D() {
   );
 }
 
+/**
+ * Returns true if the car's position is more than halfWidth units away from
+ * the nearest track segment. Iterates over all waypoint pairs.
+ */
 function checkOffTrack(x: number, z: number, waypoints: { x: number; z: number }[], halfWidth: number): boolean {
   let minDist = Infinity;
   for (let i = 0; i < waypoints.length; i++) {
@@ -259,6 +265,10 @@ function checkOffTrack(x: number, z: number, waypoints: { x: number; z: number }
   return minDist > halfWidth;
 }
 
+/**
+ * Computes the minimum distance from point P to the line segment AB.
+ * Projects P onto AB clamped to [0, 1], then measures the distance to that projection.
+ */
 function pointToSegmentDist(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
   const dx = bx - ax;
   const dz = bz - az;
@@ -273,6 +283,12 @@ function pointToSegmentDist(px: number, pz: number, ax: number, az: number, bx: 
 
 let lastCrossingSide: number | null = null;
 
+/**
+ * Detects when the car crosses the start/finish line.
+ * Uses a signed dot product against the spawn orientation normal to determine which
+ * side of the line the car is on. A lap is registered when the car transitions from
+ * the negative side to the positive side while moving forward (speed > 1).
+ */
 function checkLapCrossing(
   car: { x: number; z: number; rotation: number; speed: number },
   spawnPos: [number, number, number],

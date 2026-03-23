@@ -6,6 +6,12 @@ import { isApiConfigured, listModels, type ModelRecordPayload } from '@/lib/api/
 import { useAiDriverStore } from '@/lib/inference/ai-driver-store';
 import { useGameStore } from '@/lib/stores/game-store';
 
+/**
+ * In-game AI model selector panel — lets the user choose between the server's
+ * currently active model and a manually pinned version, and toggle between
+ * the learned ONNX model and the waypoint demo AI.
+ * Only shown when driveMode is 'ai'.
+ */
 export function AiModelPanel() {
   const driveMode = useGameStore((s) => s.driveMode);
   const mode = useGameStore((s) => s.mode);
@@ -26,6 +32,7 @@ export function AiModelPanel() {
 
   const visible = mode !== 'menu' && driveMode === 'ai';
 
+  /** Fetches the latest model list from the server and updates local state. */
   async function refreshModels() {
     if (!isApiConfigured()) return;
     setLoading(true);

@@ -17,6 +17,7 @@ export function Minimap() {
   useEffect(() => {
     let animId: number;
 
+    /** Renders a single minimap frame to the canvas and schedules the next via rAF. */
     function draw() {
       const canvas = canvasRef.current;
       if (!canvas) return;
@@ -39,6 +40,7 @@ export function Minimap() {
       const rangeZ = maxZ - minZ || 1;
       const scale = (MAP_SIZE - PADDING * 2) / Math.max(rangeX, rangeZ);
 
+      /** Converts world-space (x, z) coordinates to canvas pixel coordinates. */
       function toScreen(wx: number, wz: number): [number, number] {
         const sx = PADDING + (wx - minX) * scale;
         const sy = PADDING + (wz - minZ) * scale;

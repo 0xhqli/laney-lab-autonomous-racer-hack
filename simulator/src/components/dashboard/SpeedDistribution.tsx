@@ -120,6 +120,10 @@ export function SpeedDistribution({ runs }: { runs: TrainingRun[] }) {
   );
 }
 
+/**
+ * Speed vs Steering overlay chart for the most recent run with at least 10 frames.
+ * Downsamples to 200 points for render performance.
+ */
 function LatestRunChart({ runs }: { runs: TrainingRun[] }) {
   const lastRun = [...runs].reverse().find((r) => r.controlLog && r.controlLog.length > 10);
   if (!lastRun) {

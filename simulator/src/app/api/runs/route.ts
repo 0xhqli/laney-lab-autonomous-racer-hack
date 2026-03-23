@@ -1,18 +1,29 @@
+/**
+ * POST /api/runs  — create a new run record.
+ * GET  /api/runs  — list runs with optional filters (limit, status, user_id, track_id).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { createRun, listRuns } from '@/lib/server/shared-data-store';
 
 export const runtime = 'nodejs';
 
+/**
+ * Returns the base URL to embed in artifact upload URLs.
+ * Prefers the NEXT_PUBLIC_API_URL env variable so Docker deployments
+ * can expose a stable public hostname instead of using the request origin.
+ */
 function getBaseUrl(req: NextRequest): string {
   const env = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (env) return env.replace(/\/+$/, '');
   return req.nextUrl.origin;
 }
 
+/** Returns a 400 JSON error response with the given message. */
 function badRequest(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
+/** Creates a new run record and returns 201 with the created run. */
 export async function POST(req: NextRequest) {
   let payload: unknown;
   try {
@@ -45,6 +56,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(created, { status: 201 });
 }
 
+/** Lists runs with optional query-string filters: limit, status, user_id, track_id. */
 export async function GET(req: NextRequest) {
   const limitRaw = req.nextUrl.searchParams.get('limit');
   const limit = limitRaw ? Number(limitRaw) : 20;

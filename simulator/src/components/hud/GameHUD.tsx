@@ -4,6 +4,7 @@ import { useGameStore } from '@/lib/stores/game-store';
 import { useAiDriverStore } from '@/lib/inference/ai-driver-store';
 import { Timer, Trophy, Zap, AlertTriangle, Bot } from 'lucide-react';
 
+/** Formats a millisecond duration as M:SS.cc (minutes, seconds, centiseconds). */
 function formatTime(ms: number): string {
   const totalSec = ms / 1000;
   const min = Math.floor(totalSec / 60);

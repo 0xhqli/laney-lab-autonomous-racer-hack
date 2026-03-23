@@ -1,12 +1,18 @@
+/**
+ * GET  /api/models/active — returns the current active model version tag.
+ * POST /api/models/active — sets the active model version (body: { model_version }).
+ */
 import { NextResponse } from 'next/server';
 import { getActiveModelVersion, setActiveModelVersion } from '@/lib/server/shared-data-store';
 
 export const runtime = 'nodejs';
 
+/** Returns { active_model_version: string | null }. */
 export async function GET() {
   return NextResponse.json({ active_model_version: getActiveModelVersion() });
 }
 
+/** Updates the active model version to the one specified in the request body. */
 export async function POST(req: Request) {
   let payload: unknown;
   try {

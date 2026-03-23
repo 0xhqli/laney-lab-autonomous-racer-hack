@@ -1,5 +1,11 @@
 'use client';
 
+/**
+ * AI driver runtime state — Zustand store.
+ * Tracks the ONNX model lifecycle (loading, ready, error), the most recent
+ * steering prediction, and which control source is currently active
+ * (learned model vs waypoint fallback).
+ */
 import { create } from 'zustand';
 
 export type AiModelStatus = 'disabled' | 'idle' | 'loading' | 'ready' | 'error';
