@@ -19,6 +19,10 @@ const MIN_DISPLAY_RUNS = 125;
 const MIN_DISPLAY_LAPS = 125;
 
 let trackVisualSeedCounter = 1;
+/**
+ * Returns the next non-zero positive seed for lab obstacle randomization.
+ * Wraps at 31 bits to stay within safe integer range.
+ */
 function nextTrackVisualSeed(): number {
   trackVisualSeedCounter = (trackVisualSeedCounter + 1) & 0x7fffffff;
   if (trackVisualSeedCounter === 0) trackVisualSeedCounter = 1;
@@ -63,6 +67,11 @@ export function TrackSelect() {
   const rawTotalRuns = cloudSummary?.runs ?? localStats.totalRuns ?? 0;
   const totalRuns = cloudSummary ? Math.max(rawTotalRuns, MIN_DISPLAY_RUNS) : rawTotalRuns;
 
+  /**
+   * Resets game state for a fresh run on the selected track:
+   * clears laps and control log, places the car at the spawn point,
+   * and assigns a new visual seed for lab obstacle randomization (if enabled).
+   */
   function initTrack(trackId: string) {
     setTrackId(trackId);
     useGameStore.getState().resetLaps();
@@ -82,12 +91,14 @@ export function TrackSelect() {
     });
   }
 
+  /** Initializes the track and starts a manual (human) driving session. */
   function startDriving(trackId: string) {
     initTrack(trackId);
     useGameStore.getState().setDriveMode('manual');
     setMode('driving');
   }
 
+  /** Initializes the track and starts an autonomous (AI) driving session. */
   function startAutonomous(trackId: string) {
     initTrack(trackId);
     useGameStore.getState().setDriveMode('ai');
@@ -223,6 +234,11 @@ export function TrackSelect() {
   );
 }
 
+/**
+ * Footer stats bar showing pooled training data totals.
+ * Fetches cloud stats if the API is configured; falls back to local stats otherwise.
+ * Hidden when no runs have been recorded yet.
+ */
 function DataBar() {
   const [localStats] = useState<AccumulatedStats>(() => getStats());
   const [cloudSummary, setCloudSummary] = useState<{ runs: number; laps: number; frames: number } | null>(null);

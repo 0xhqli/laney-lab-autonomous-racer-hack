@@ -26,9 +26,11 @@ export function LapTimeChart({ runs }: { runs: TrainingRun[] }) {
   const yMin = Math.max(0, minTime - 2);
   const yMax = maxTime + 2;
 
+  /** Maps a data index (0-based) to an SVG x coordinate. */
   function x(i: number) {
     return PAD.left + (i / Math.max(1, lapsWithTimes.length - 1)) * plotW;
   }
+  /** Maps a lap time (seconds) to an SVG y coordinate — larger time = lower on the chart. */
   function y(t: number) {
     return PAD.top + plotH - ((t - yMin) / (yMax - yMin)) * plotH;
   }
@@ -103,6 +105,7 @@ export function LapTimeChart({ runs }: { runs: TrainingRun[] }) {
   );
 }
 
+/** Placeholder card shown when there is no data to render yet. */
 function EmptyChart({ message }: { message: string }) {
   return (
     <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-12 text-center text-gray-500 text-sm">

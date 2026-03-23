@@ -10,6 +10,11 @@ export const metadata: Metadata = {
   description: "Drive. Train. Race the AI.",
 };
 
+/**
+ * Root layout — wraps every page with global styles and the background sync worker.
+ * SyncQueueWorker runs invisibly at the app level so pending run uploads
+ * are retried whenever the user is online, regardless of which page they're on.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -18,6 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.className} bg-black text-white overflow-hidden`}>
+        {/* Background worker that flushes the run-sync queue on an interval */}
         <SyncQueueWorker />
         {children}
       </body>

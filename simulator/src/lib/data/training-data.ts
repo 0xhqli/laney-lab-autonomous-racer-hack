@@ -32,10 +32,12 @@ export interface AccumulatedStats {
   bestLapMs: number | null;
 }
 
+/** Returns a zeroed-out stats object, used as the initial value or when localStorage is unavailable. */
 function getDefaultStats(): AccumulatedStats {
   return { totalRuns: 0, totalLaps: 0, totalFrames: 0, totalDriveTimeMs: 0, bestLapMs: null };
 }
 
+/** Reads the accumulated stats object from localStorage, or returns defaults on SSR/parse error. */
 export function getStats(): AccumulatedStats {
   if (typeof window === 'undefined') return getDefaultStats();
   try {
@@ -46,6 +48,11 @@ export function getStats(): AccumulatedStats {
   }
 }
 
+/**
+ * Reads all stored training runs from localStorage.
+ * Adds default values for newer fields (hasFrameCapture, captureFrameCount) to ensure
+ * backwards compatibility with runs saved before those fields existed.
+ */
 export function getRuns(): TrainingRun[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -61,6 +68,12 @@ export function getRuns(): TrainingRun[] {
   }
 }
 
+/**
+ * Saves a completed run to localStorage and updates the accumulated stats.
+ * Keeps only the last 100 runs with full control logs; older runs have their
+ * logs stripped to conserve storage. Falls back to more aggressive trimming if
+ * the write fails due to storage quota.
+ */
 export function saveRun(run: Omit<TrainingRun, 'id' | 'timestamp'>): TrainingRun {
   const fullRun: TrainingRun = {
     ...run,
@@ -113,12 +126,14 @@ export function saveRun(run: Omit<TrainingRun, 'id' | 'timestamp'>): TrainingRun
   return fullRun;
 }
 
+/** Deletes a single run by ID and recalculates the accumulated stats. */
 export function deleteRun(id: string): void {
   const runs = getRuns().filter((r) => r.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(runs));
   recalculateStats(runs);
 }
 
+/** Deletes multiple runs by ID in a single localStorage write and recalculates stats. */
 export function deleteRuns(ids: string[]): void {
   const idSet = new Set(ids);
   const runs = getRuns().filter((r) => !idSet.has(r.id));
@@ -126,6 +141,10 @@ export function deleteRuns(ids: string[]): void {
   recalculateStats(runs);
 }
 
+/**
+ * Updates the frame capture status flags for a run after image frames have been
+ * saved to IndexedDB. Does nothing if the run ID is not found.
+ */
 export function updateRunCaptureStatus(id: string, values: { hasFrameCapture: boolean; captureFrameCount: number }): void {
   const runs = getRuns();
   let changed = false;
@@ -138,6 +157,10 @@ export function updateRunCaptureStatus(id: string, values: { hasFrameCapture: bo
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 }
 
+/**
+ * Recomputes accumulated stats from scratch by iterating over all provided runs.
+ * Called after any delete operation to keep the stats in sync.
+ */
 function recalculateStats(runs: TrainingRun[]): void {
   const stats: AccumulatedStats = {
     totalRuns: runs.length,
@@ -161,6 +184,11 @@ export interface FlaggedRun {
   flags: { type: AnomalyFlag; label: string; detail: string }[];
 }
 
+/**
+ * Scans a list of runs for data quality issues and returns only those with flags.
+ * Flags include: unusually long duration, zero laps despite many frames,
+ * excessive off-track events, and near-zero movement during a long session.
+ */
 export function flagAnomalies(runs: TrainingRun[]): FlaggedRun[] {
   if (runs.length === 0) return [];
 
@@ -204,11 +232,13 @@ export function flagAnomalies(runs: TrainingRun[]): FlaggedRun[] {
   return flagged;
 }
 
+/** Serializes all stored training runs to a pretty-printed JSON string. */
 export function exportRunsAsJSON(): string {
   const runs = getRuns();
   return JSON.stringify(runs, null, 2);
 }
 
+/** Serializes all stored training runs to a flat CSV string (metadata only, no control log). */
 export function exportRunsAsCSV(): string {
   const runs = getRuns();
   const lines = ['id,trackId,driveMode,lapCount,frames,bestLapMs,durationMs,timestamp'];

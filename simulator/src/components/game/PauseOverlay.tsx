@@ -15,10 +15,15 @@ export function PauseOverlay() {
 
   if (mode !== 'paused') return null;
 
+  /** Resumes the current run from the pause point. */
   function resume() {
     setMode('driving');
   }
 
+  /**
+   * Resets the car to the track spawn point, clears laps and control log,
+   * and resumes driving — effectively starting a fresh run on the same track.
+   */
   function restart() {
     const store = useGameStore.getState();
     const track = getTrack(store.trackId);
@@ -35,8 +40,8 @@ export function PauseOverlay() {
     setMode('driving');
   }
 
+  /** Ends the run and goes to the run-complete screen to save training data. */
   function endRun() {
-    // Go to run-complete screen which saves data
     setMode('run-complete');
   }
 

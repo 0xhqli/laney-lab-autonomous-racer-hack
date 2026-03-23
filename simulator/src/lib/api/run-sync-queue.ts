@@ -22,12 +22,15 @@ interface SyncQueueState {
   entries: RunSyncEntry[];
 }
 
+// Guard against concurrent flush calls — only one flush is allowed in-flight at a time.
 let flushInFlight: Promise<void> | null = null;
 
+/** Returns the current UTC time as an ISO 8601 string. */
 function nowIso() {
   return new Date().toISOString();
 }
 
+/** Reads the sync queue from localStorage, returning an empty queue if it doesn't exist or is corrupt. */
 function loadQueue(): SyncQueueState {
   if (typeof window === 'undefined') return { entries: [] };
   try {
@@ -40,11 +43,16 @@ function loadQueue(): SyncQueueState {
   }
 }
 
+/** Persists the sync queue state back to localStorage. */
 function saveQueue(state: SyncQueueState) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(state));
 }
 
+/**
+ * Inserts or updates an entry in the sync queue.
+ * If an entry for localRunId already exists, the patch is merged on top of it.
+ */
 function upsertEntry(localRunId: string, patch?: Partial<RunSyncEntry>) {
   const state = loadQueue();
   const idx = state.entries.findIndex((e) => e.localRunId === localRunId);
@@ -67,14 +75,20 @@ function upsertEntry(localRunId: string, patch?: Partial<RunSyncEntry>) {
   return state;
 }
 
+/** Looks up a training run in localStorage by its local ID. Returns null if not found. */
 function getLocalRunById(localRunId: string): TrainingRun | null {
   return getRuns().find((r) => r.id === localRunId) ?? null;
 }
 
+/** Converts durationMs to seconds, clamped to 0 so the server never receives a negative value. */
 function toDurationSeconds(run: TrainingRun): number {
   return Math.max(0, run.durationMs / 1000);
 }
 
+/**
+ * Builds a CSV Blob from a run's control log.
+ * Used as the fallback controls artifact when no image capture is available.
+ */
 function buildControlsCsvBlob(run: TrainingRun): Blob {
   const lines = ['frame_idx,timestamp_ms,steering,throttle,speed,x,z'];
   for (let idx = 0; idx < run.controlLog.length; idx++) {
@@ -92,6 +106,13 @@ function buildControlsCsvBlob(run: TrainingRun): Blob {
   return new Blob([lines.join('\n')], { type: 'text/csv' });
 }
 
+/**
+ * Uploads a single run to the remote API:
+ *   1. Creates the remote run record and gets upload URLs.
+ *   2. Uploads image frames ZIP (if available) and the controls CSV.
+ *   3. Finalizes the run with metadata (duration, lap count, etc.).
+ * Updates the sync queue entry with the result (synced or error).
+ */
 async function syncSingleEntry(entry: RunSyncEntry): Promise<void> {
   const run = getLocalRunById(entry.localRunId);
   if (!run) {
@@ -156,15 +177,22 @@ async function syncSingleEntry(entry: RunSyncEntry): Promise<void> {
   }
 }
 
+/** Adds a run to the sync queue (or resets it to 'pending' if it previously errored). */
 export function enqueueRunForSync(localRunId: string) {
   if (!isApiConfigured()) return;
   upsertEntry(localRunId, { status: 'pending', lastError: undefined });
 }
 
+/** Returns all entries currently in the sync queue (used by the dashboard to show sync status). */
 export function listRunSyncQueue(): RunSyncEntry[] {
   return loadQueue().entries;
 }
 
+/**
+ * Processes all pending/errored entries in the sync queue one at a time.
+ * Stops on the first failure to avoid hammering a downed API.
+ * If a flush is already in progress, returns the same promise (no concurrent flushes).
+ */
 export async function flushRunSyncQueue(): Promise<void> {
   if (!isApiConfigured()) return;
   if (flushInFlight) return flushInFlight;
