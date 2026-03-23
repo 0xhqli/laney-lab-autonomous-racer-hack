@@ -54,16 +54,15 @@ export default function DashboardPage() {
   const [creatingJob, setCreatingJob] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showHelp, setShowHelp] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('dashboard-help-dismissed') !== 'true';
+    return typeof window !== 'undefined' && localStorage.getItem('dashboard-help-dismissed') !== 'true';
     /*clean up the logic into a single boolean expression. 
-    first section probably is needed to prevent undefined
-    second probably checks if the the item has been dismissed*/
+    first section prevent undefined using boolean shortcircuiting, second checks if the the item has been dismissed*/
   });
   const [localSyncEntries, setLocalSyncEntries] = useState<RunSyncEntry[]>([]);
   const exportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    //get runs and stats on componet load
     setRuns(getRuns());
     setStats(getStats());
   }, []);
