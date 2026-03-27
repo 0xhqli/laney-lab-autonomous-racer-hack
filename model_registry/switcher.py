@@ -7,6 +7,7 @@ switch event to switch_log.jsonl for audit history.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,9 +17,16 @@ from model_registry.registry_core import REGISTRY_DIR, get_model, load_registry
 ACTIVE_MODEL_FILE = REGISTRY_DIR / "active_model.json"
 SWITCH_LOG_FILE = REGISTRY_DIR / "switch_log.jsonl"
 
-# The vehicle runtime looks for a model at this path.
-# This can be overridden via VEHICLE_MODEL_DEPLOY_DIR env var.
-DEFAULT_DEPLOY_DIR = REGISTRY_DIR.parent / "services" / "vehicle-runtime" / ".active-model"
+# The vehicle runtime auto-discovers models from this directory.
+# Override with VEHICLE_MODEL_DEPLOY_DIR env var if the runtime lives elsewhere.
+_env_deploy = os.getenv("VEHICLE_MODEL_DEPLOY_DIR")
+DEFAULT_DEPLOY_DIR = (
+    Path(_env_deploy).resolve() if _env_deploy
+    else (REGISTRY_DIR.parent / "services" / "vehicle-runtime" / ".active-model").resolve()
+)
+
+# If the vehicle runtime API is reachable, notify it after deploy.
+VEHICLE_RUNTIME_URL = os.getenv("VEHICLE_RUNTIME_URL", "http://localhost:8100")
 
 
 def _now_iso() -> str:
@@ -155,13 +163,131 @@ def set_active_model(
         "previous_model_id": previous_id,
     }
 
-    # Deploy files
+    # Deploy files to the vehicle runtime
     if deploy:
-        target = deploy_dir or DEFAULT_DEPLOY_DIR
-        _deploy_model_files(model_id, target)
-        result["deployed_to"] = str(target)
+        if _runtime_is_remote():
+            # Runtime is on a different machine (racer on WiFi) -- push the model
+            # file over HTTP so the racer receives it without needing a shared filesystem
+            pushed = _push_model_to_runtime(model_id, deploy_dir or DEFAULT_DEPLOY_DIR)
+            result["deployed_via"] = "wifi_push"
+            result["runtime_notified"] = pushed
+            result["deployed_to"] = VEHICLE_RUNTIME_URL
+        else:
+            # Runtime is local -- copy files directly to the watched directory
+            target = deploy_dir or DEFAULT_DEPLOY_DIR
+            _deploy_model_files(model_id, target)
+            result["deployed_to"] = str(target)
+            result["deployed_via"] = "local_copy"
+            reloaded = _notify_runtime_reload()
+            result["runtime_notified"] = reloaded
 
     return result
+
+
+def _runtime_is_remote() -> bool:
+    """Return True if the vehicle runtime is on a different machine (not localhost)."""
+    import urllib.parse
+    parsed = urllib.parse.urlparse(VEHICLE_RUNTIME_URL)
+    host = parsed.hostname or ""
+    return host not in ("localhost", "127.0.0.1", "::1")
+
+
+def _push_model_to_runtime(model_id: str, local_path: Path) -> bool:
+    """
+    Push a model file to the remote vehicle runtime over WiFi via HTTP.
+    Used when the runtime is on a different machine (e.g. racer on WiFi).
+    Returns True if successfully pushed.
+    """
+    import urllib.request
+    import urllib.parse
+    import mimetypes
+
+    entry = get_model(model_id)
+    if not entry:
+        return False
+
+    # Find the model file to push
+    src = Path(entry.local_path) if entry.local_path else None
+    if src and not src.is_absolute():
+        src = REGISTRY_DIR / src
+
+    if not src or not src.exists():
+        print(f"Warning: no local model file found for '{model_id}', runtime won't reload new weights.")
+        return False
+
+    # If it's a directory, find the primary model file inside it
+    model_file: Path | None = None
+    if src.is_dir():
+        for ext in (".pb", ".onnx", ".tflite", ".pt", ".pth"):
+            candidates = list(src.rglob(f"*{ext}"))
+            if candidates:
+                model_file = candidates[0]
+                break
+    elif src.is_file():
+        model_file = src
+
+    if model_file is None:
+        print(f"Warning: could not find a model weight file in '{src}'")
+        return False
+
+    # Multipart form upload to /model/push
+    boundary = "----ModelPushBoundary"
+    filename = model_file.name
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+
+    with open(model_file, "rb") as f:
+        file_data = f.read()
+
+    parts = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n"
+    ).encode("utf-8") + file_data + (
+        f"\r\n--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="model_id"\r\n\r\n{model_id}'
+        f"\r\n--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="display_name"\r\n\r\n{entry.display_name}'
+        f"\r\n--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="format"\r\n\r\n{entry.format}'
+        f"\r\n--{boundary}--\r\n"
+    ).encode("utf-8")
+
+    url = f"{VEHICLE_RUNTIME_URL}/model/push?model_id={urllib.parse.quote(model_id)}&display_name={urllib.parse.quote(entry.display_name)}&format={urllib.parse.quote(entry.format)}"
+    req = urllib.request.Request(
+        url,
+        data=parts,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status == 200
+    except Exception as e:
+        print(f"Warning: model push to runtime failed: {e}")
+        return False
+
+
+def _notify_runtime_reload() -> bool:
+    """
+    Poke the vehicle runtime's /model/reload endpoint so it picks up
+    the new model immediately instead of waiting for the next refresh cycle.
+
+    Returns True if the runtime acknowledged, False if unreachable (not an error).
+    """
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{VEHICLE_RUNTIME_URL}/model/reload",
+            method="POST",
+            data=b"",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return resp.status == 200
+    except Exception:
+        # Runtime not running or unreachable -- that's fine,
+        # it will auto-detect the new marker on next tick.
+        return False
 
 
 def get_switch_history(limit: int = 20) -> list[dict]:
