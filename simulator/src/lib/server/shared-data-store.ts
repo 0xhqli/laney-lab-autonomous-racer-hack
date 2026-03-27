@@ -33,29 +33,35 @@ export interface StartTrainingJobInput {
 
 type DbRow = Record<string, unknown>;
 
+// Module-level singleton so only one DB connection is opened per server process.
 let dbSingleton: Database.Database | null = null;
 
+/** Returns the data directory, preferring the SIMULATOR_DATA_DIR env var over the default .data/ path. */
 function getDataDir(): string {
   const configured = process.env.SIMULATOR_DATA_DIR?.trim();
   return configured ? path.resolve(configured) : path.join(process.cwd(), '.data');
 }
 
+/** Returns the SQLite database file path, preferring SIMULATOR_DB_PATH if set. */
 function getDbPath(): string {
   const configured = process.env.SIMULATOR_DB_PATH?.trim();
   if (configured) return path.resolve(configured);
   return path.join(getDataDir(), 'simulator.db');
 }
 
+/** Creates a directory (including parents) if it doesn't already exist. */
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
 
+/** Returns the current UTC time as an ISO 8601 string. */
 function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Safely parses a JSON column value, returning an empty object on null or parse error. */
 function jsonOrEmptyObject(value: string | null): Record<string, unknown> {
   if (!value) return {};
   try {
@@ -65,6 +71,7 @@ function jsonOrEmptyObject(value: string | null): Record<string, unknown> {
   }
 }
 
+/** Maps a raw SQLite run row to the API-facing run record shape. */
 function rowToRun(row: DbRow) {
   return {
     run_id: String(row.run_id),
@@ -93,6 +100,7 @@ function rowToRun(row: DbRow) {
   };
 }
 
+/** Maps a raw SQLite model row to the API-facing model record shape. */
 function rowToModel(row: DbRow) {
   return {
     model_id: String(row.model_id),
@@ -109,6 +117,7 @@ function rowToModel(row: DbRow) {
   };
 }
 
+/** Maps a raw SQLite training job row to the API-facing job record shape. */
 function rowToJob(row: DbRow) {
   return {
     job_id: String(row.job_id),
@@ -121,12 +130,20 @@ function rowToJob(row: DbRow) {
   };
 }
 
+/**
+ * Generates a unique, human-readable model version tag like "v20240315120000-a3f2".
+ * The timestamp prefix makes versions sort chronologically.
+ */
 function createVersionTag(): string {
   const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
   const suffix = Math.random().toString(36).slice(2, 6);
   return `v${stamp}-${suffix}`;
 }
 
+/**
+ * Initializes the SQLite schema if it doesn't already exist.
+ * Uses WAL journal mode for better write concurrency.
+ */
 function initSchema(db: Database.Database): void {
   db.exec(`
     PRAGMA journal_mode = WAL;
@@ -205,6 +222,10 @@ function initSchema(db: Database.Database): void {
   `);
 }
 
+/**
+ * Returns the singleton database connection, creating and initializing it on first call.
+ * The data directory is created if it doesn't exist.
+ */
 export function getDb(): Database.Database {
   if (dbSingleton) return dbSingleton;
   const dbPath = getDbPath();
@@ -215,6 +236,10 @@ export function getDb(): Database.Database {
   return dbSingleton;
 }
 
+/**
+ * Creates a new run record in the database with status 'ingesting'.
+ * Returns the new run ID and pre-signed upload URLs for frames and controls artifacts.
+ */
 export function createRun(baseUrl: string, payload: CreateRunInput) {
   const db = getDb();
   const runId = crypto.randomUUID();
@@ -254,6 +279,7 @@ export function createRun(baseUrl: string, payload: CreateRunInput) {
   };
 }
 
+/** Retrieves a run by ID, or returns null if not found. */
 export function getRunOrNull(runId: string) {
   const db = getDb();
   const row = db.prepare('SELECT * FROM runs WHERE run_id = ?').get(runId) as DbRow | undefined;
@@ -261,6 +287,10 @@ export function getRunOrNull(runId: string) {
   return rowToRun(row);
 }
 
+/**
+ * Returns a paginated list of runs ordered by creation time (newest first).
+ * Optionally filters by status, track ID, or user ID.
+ */
 export function listRuns(params: { limit: number; status?: string; track_id?: string; user_id?: string }) {
   const db = getDb();
   const where: string[] = [];
@@ -286,6 +316,10 @@ export function listRuns(params: { limit: number; status?: string; track_id?: st
   };
 }
 
+/**
+ * Stores a binary artifact (frames ZIP or controls CSV) for a run in the database.
+ * Upserts the run_artifacts row and updates the corresponding URI column on the run.
+ */
 export function uploadRunArtifact(runId: string, kind: 'frames' | 'controls', bytes: Buffer) {
   const db = getDb();
   const run = db.prepare('SELECT run_id FROM runs WHERE run_id = ?').get(runId) as DbRow | undefined;
@@ -317,6 +351,10 @@ export function uploadRunArtifact(runId: string, kind: 'frames' | 'controls', by
   `).run(`/api/runs/${runId}/artifacts/controls`, now, runId);
 }
 
+/**
+ * Marks a run as 'completed' and writes final stats (duration, lap count, etc.).
+ * Returns the updated run record.
+ */
 export function finalizeRun(runId: string, payload: FinalizeRunInput) {
   const db = getDb();
   const row = db.prepare('SELECT * FROM runs WHERE run_id = ?').get(runId) as DbRow | undefined;
@@ -349,6 +387,7 @@ export function finalizeRun(runId: string, payload: FinalizeRunInput) {
   return getRunOrNull(runId);
 }
 
+/** Retrieves the raw bytes of a run's frames ZIP or controls CSV from the database. */
 export function getRunArtifact(runId: string, kind: 'frames' | 'controls'): Buffer | null {
   const db = getDb();
   const row = db
@@ -358,6 +397,7 @@ export function getRunArtifact(runId: string, kind: 'frames' | 'controls'): Buff
   return kind === 'frames' ? (row.frames_zip ?? null) : (row.controls_csv ?? null);
 }
 
+/** Returns aggregate stats across all completed runs (total laps, frames, best lap time, etc.). */
 export function getStats() {
   const db = getDb();
   const row = db.prepare(`
@@ -380,6 +420,7 @@ export function getStats() {
   };
 }
 
+/** Returns the most recently created models ordered by creation time. */
 export function listModels(limit: number) {
   const db = getDb();
   const rows = db.prepare('SELECT * FROM models ORDER BY created_at DESC LIMIT ?').all(limit) as DbRow[];
@@ -389,6 +430,7 @@ export function listModels(limit: number) {
   };
 }
 
+/** Retrieves a model record by version string, or null if not found. */
 export function getModel(modelVersion: string) {
   const db = getDb();
   const row = db.prepare('SELECT * FROM models WHERE model_version = ?').get(modelVersion) as DbRow | undefined;
@@ -396,6 +438,7 @@ export function getModel(modelVersion: string) {
   return rowToModel(row);
 }
 
+/** Returns the model version currently set as active, or null if none has been set. */
 export function getActiveModelVersion(): string | null {
   const db = getDb();
   const row = db.prepare('SELECT state_value FROM app_state WHERE state_key = ?').get('active_model_version') as DbRow | undefined;
@@ -408,6 +451,10 @@ export function getActiveModelVersion(): string | null {
   }
 }
 
+/**
+ * Sets the active model version in the app_state table.
+ * Throws if the model version doesn't exist in the models table.
+ */
 export function setActiveModelVersion(modelVersion: string): string {
   const db = getDb();
   const found = db.prepare('SELECT model_version FROM models WHERE model_version = ?').get(modelVersion) as DbRow | undefined;
@@ -423,6 +470,7 @@ export function setActiveModelVersion(modelVersion: string): string {
   return modelVersion;
 }
 
+/** Lists training jobs ordered by creation time, optionally filtered by status. */
 export function listTrainingJobs(limit: number, status?: string) {
   const db = getDb();
   const where = status ? 'WHERE status = ?' : '';
@@ -435,6 +483,7 @@ export function listTrainingJobs(limit: number, status?: string) {
   };
 }
 
+/** Retrieves a training job by ID, or null if not found. */
 export function getTrainingJob(jobId: string) {
   const db = getDb();
   const row = db.prepare('SELECT * FROM training_jobs WHERE job_id = ?').get(jobId) as DbRow | undefined;
@@ -442,6 +491,13 @@ export function getTrainingJob(jobId: string) {
   return rowToJob(row);
 }
 
+/**
+ * Creates a training job and a placeholder model record in a single transaction.
+ * The job is immediately marked as 'succeeded' — actual training happens in an
+ * external Python process that downloads the run artifacts, trains, and uploads
+ * the resulting ONNX model. If export.set_active is true, the new model version
+ * is automatically set as the active model.
+ */
 export function startTrainingJob(payload: StartTrainingJobInput) {
   const db = getDb();
   const jobId = crypto.randomUUID();

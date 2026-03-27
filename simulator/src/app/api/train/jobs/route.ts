@@ -1,13 +1,25 @@
+/**
+ * GET  /api/train/jobs — list training jobs (optional filters: limit, status).
+ * POST /api/train/jobs — create a placeholder training job.
+ *
+ * POST is only available when SIMULATOR_ALLOW_LOCAL_PLACEHOLDER_TRAINING=true.
+ * In production, training is triggered through the shared trainer server instead.
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { listTrainingJobs, startTrainingJob } from '@/lib/server/shared-data-store';
 
 export const runtime = 'nodejs';
 
+/**
+ * Returns true when the SIMULATOR_ALLOW_LOCAL_PLACEHOLDER_TRAINING env var is
+ * set to '1', 'true', or 'yes'. Used to gate local scaffold training mode.
+ */
 function allowLocalPlaceholderTraining(): boolean {
   const raw = process.env.SIMULATOR_ALLOW_LOCAL_PLACEHOLDER_TRAINING?.trim().toLowerCase();
   return raw === '1' || raw === 'true' || raw === 'yes';
 }
 
+/** Lists training jobs with optional limit and status query params. */
 export async function GET(req: NextRequest) {
   const limitRaw = req.nextUrl.searchParams.get('limit');
   const limit = limitRaw ? Number(limitRaw) : 20;
@@ -16,6 +28,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(listTrainingJobs(safeLimit, status));
 }
 
+/**
+ * Creates a placeholder training job when local training is enabled.
+ * Returns 503 if SIMULATOR_ALLOW_LOCAL_PLACEHOLDER_TRAINING is not set.
+ */
 export async function POST(req: Request) {
   if (!allowLocalPlaceholderTraining()) {
     return NextResponse.json(

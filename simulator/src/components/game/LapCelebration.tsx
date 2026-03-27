@@ -9,6 +9,10 @@ const PARTICLE_COUNT = 100;
 const DURATION = 2500; // ms
 const FADE_START = 2000; // ms
 
+/**
+ * Plays a short sine-wave chime using the Web Audio API.
+ * Silently fails if audio is blocked (e.g. browser autoplay policy).
+ */
 function playCelebrationSound() {
   try {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -31,6 +35,11 @@ function playCelebrationSound() {
   }
 }
 
+/**
+ * Three.js particle burst that fires when a lap is completed.
+ * Spawns 100 colored particles above the car, applies gravity, and fades them
+ * out over 2.5 seconds before deactivating.
+ */
 export function LapCelebration() {
   const store = useGameStore();
   const particlesRef = useRef<THREE.Points>(null);

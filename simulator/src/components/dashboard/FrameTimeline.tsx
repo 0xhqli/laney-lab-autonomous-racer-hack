@@ -126,6 +126,7 @@ export function FrameTimeline({ runs, selectedRun }: { runs: TrainingRun[]; sele
   );
 }
 
+/** Small labeled value card used in the frame data grid. Color can be 'white', 'green', 'yellow', or 'red'. */
 function FrameValue({ label, value, color = 'white' }: { label: string; value: string; color?: string }) {
   const colors: Record<string, string> = {
     white: 'text-white',

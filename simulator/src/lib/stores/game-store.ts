@@ -96,6 +96,10 @@ interface GameState {
   setCelebrationActive: (active: boolean) => void;
 }
 
+/**
+ * Reads persisted lap count and approximates the accumulated XP from localStorage.
+ * Used to initialize the store on first load so progress survives page reloads.
+ */
 function loadSavedStats() {
   if (typeof window === 'undefined') return { laps: 0, xp: 0 };
   const stats = getStats();
@@ -105,6 +109,10 @@ function loadSavedStats() {
   };
 }
 
+/**
+ * Reads the lab-randomization preference from localStorage.
+ * Defaults to true (enabled) if no preference has been saved.
+ */
 function loadLabRandomizationEnabled() {
   if (typeof window === 'undefined') return true;
   const raw = localStorage.getItem('deepracer-lab-randomization');

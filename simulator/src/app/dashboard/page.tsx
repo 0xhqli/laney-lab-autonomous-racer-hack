@@ -38,7 +38,10 @@ const tabs: { id: Tab; label: string; icon: typeof BarChart3; description: strin
   { id: 'inspector', label: 'Inspector', icon: Zap, description: 'Advanced frame-level data' },
 ];
 
-// Main dashboard page — manages all state and renders the tab layout with stats banner.
+/**
+ * Main dashboard page — manages all state and renders the tab layout with stats banner.
+ * Loads local run data on mount and optionally fetches remote cloud data when an API is configured.
+ */
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>('driving');
   const [runs, setRuns] = useState<TrainingRun[]>([]);
@@ -81,8 +84,10 @@ export default function DashboardPage() {
   }, []);
 
 
-  // Fetches all cloud state in parallel (summary, models, jobs, active model, recent runs)
-  // and updates the corresponding state variables. Shows a loading indicator while in flight.
+  /**
+   * Fetches all cloud state in parallel (summary, models, jobs, active model, recent runs)
+   * and updates the corresponding state variables. Shows a loading indicator while in flight.
+   */
   async function refreshCloudData() {
     if (!isApiConfigured()) return;
     setRemoteLoading(true);

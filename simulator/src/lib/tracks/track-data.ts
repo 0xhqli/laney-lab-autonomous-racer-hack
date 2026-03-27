@@ -168,6 +168,11 @@ export function straightawayTrack(
   return tracks;
 }
 
+/**
+ * Builds the Stadium track graph from four pieces: two straight sections and
+ * two semicircular curves. Connects them by manually linking the end node of
+ * each piece to the start node of the next.
+ */
 function createStadiumTrack(): Record<string, TrackPointNode> {
   // 1. Generate the 4 track pieces
   const leftStraight = straightawayTrack("left", -20, -30, -20, 30, 10, 5);
@@ -271,7 +276,12 @@ function computeSpawnRotationGraph(
   return Math.atan2(dx, dz);
 }
 
-// Helper function
+/**
+ * Traverses a waypoint graph from startId (or the first key) following
+ * `nextTrackPointIds[0]` links, and returns the path as a flat TrackPoint array.
+ * Stops when a visited node is encountered (cycle detection). Removes the
+ * duplicate closing node if the path forms a closed loop.
+ */
 function graphToArray(
   graph: Record<string, TrackPointNode>,
   startId?: string,
@@ -639,6 +649,7 @@ export const TRACKS: TrackDef[] = [
   },
 ];
 
+/** Returns the track definition for the given ID, falling back to the first track if not found. */
 export function getTrack(id: string): TrackDef {
   return TRACKS.find((t) => t.id === id) || TRACKS[0];
 }

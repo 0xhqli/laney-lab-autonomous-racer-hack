@@ -23,16 +23,18 @@ export function AutoControls() {
 
   const isRunning = mode === 'autonomous';
 
+  /** Resumes autonomous driving from a paused state. */
   function handlePlay() {
     setMode('autonomous');
   }
 
+  /** Pauses autonomous driving without ending the run. */
   function handlePause() {
     setMode('auto-paused');
   }
 
+  /** Ends the autonomous run and navigates to the run-complete screen to save data. */
   function handleStop() {
-    // Go to run-complete screen which saves data, then back to menu
     setMode('run-complete');
   }
 

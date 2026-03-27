@@ -69,6 +69,7 @@ export function Track3D({ trackId }: { trackId: string }) {
   );
 }
 
+/** FNV-1a 32-bit hash of a string — used to produce a deterministic seed per obstacle ID. */
 function hashString(value: string): number {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < value.length; i++) {
@@ -78,6 +79,10 @@ function hashString(value: string): number {
   return h >>> 0;
 }
 
+/**
+ * Mulberry32 PRNG — produces a fast, seedable pseudo-random number generator.
+ * Returns a function that yields floats in [0, 1) on each call.
+ */
 function mulberry32(seed: number) {
   let t = seed >>> 0;
   return () => {
@@ -89,6 +94,12 @@ function mulberry32(seed: number) {
   };
 }
 
+/**
+ * Applies a small deterministic random offset to each lab obstacle's position and rotation.
+ * Uses a combined seed (visualSeed XOR obstacle ID hash) so each obstacle gets a unique
+ * but reproducible jitter, making the room layout feel slightly different each run.
+ * Returns obstacles unchanged when visualSeed is 0 (randomization disabled).
+ */
 function jitterLabObstacles(obstacles: TrackObstacle[], visualSeed: number): TrackObstacle[] {
   if (!visualSeed) return obstacles;
   return obstacles.map((obs) => {
@@ -107,6 +118,12 @@ function jitterLabObstacles(obstacles: TrackObstacle[], visualSeed: number): Tra
   });
 }
 
+/**
+ * Renders the classroom lab environment — walls, ceiling, floor tiles, windows,
+ * whiteboards, computer benches, and collaboration tables.
+ * Styled to match the real Laney College CIS lab for sim-to-real transfer.
+ * Also renders the track obstacles (tables, chairs, cones) passed as props.
+ */
 function LabEnvironment({ obstacles }: { obstacles: TrackObstacle[] }) {
   const roomWidth = 104;
   const roomDepth = 72;
@@ -300,6 +317,10 @@ function LabEnvironment({ obstacles }: { obstacles: TrackObstacle[] }) {
   );
 }
 
+/**
+ * Renders the outdoor racing environment — a green infield patch and perimeter
+ * light poles to give the space a stadium feel. Also renders track obstacles.
+ */
 function OutdoorEnvironment({ obstacles }: { obstacles: TrackObstacle[] }) {
   return (
     <group>
@@ -337,6 +358,7 @@ function OutdoorEnvironment({ obstacles }: { obstacles: TrackObstacle[] }) {
   );
 }
 
+/** Dispatches to the correct prop component based on the obstacle kind. */
 function renderObstacle(obs: TrackObstacle) {
   if (obs.kind === 'table') return <TableProp />;
   if (obs.kind === 'chair') return <ChairProp />;
@@ -347,6 +369,7 @@ function renderObstacle(obs: TrackObstacle) {
   return null;
 }
 
+/** Renders a row of computer workstations with monitors, keyboards, and chairs. */
 function ComputerBenchRow({
   position,
   rotation = 0,
@@ -393,6 +416,7 @@ function ComputerBenchRow({
   );
 }
 
+/** Renders a circular collaboration table with evenly-spaced chairs around it. */
 function OvalTableGroup({
   position,
   rotation = 0,
@@ -574,6 +598,12 @@ function GrandstandProp() {
   );
 }
 
+/**
+ * Builds Three.js BufferGeometry for the track surface, left/right curbs, and
+ * dashed center line from the waypoint array.
+ * Each consecutive waypoint pair becomes a quad (two triangles). The perpendicular
+ * normal to the segment direction is used to offset vertices left and right by halfWidth.
+ */
 function buildTrackGeometry(waypoints: TrackPoint[], halfWidth: number) {
   const n = waypoints.length;
   const surfaceVerts: number[] = [];

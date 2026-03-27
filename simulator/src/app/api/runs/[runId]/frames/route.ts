@@ -1,8 +1,16 @@
+/**
+ * POST /api/runs/[runId]/frames — upload the frames ZIP artifact for a run.
+ * Expects a multipart/form-data body with a 'file' field containing the ZIP.
+ */
 import { NextResponse } from 'next/server';
 import { uploadRunArtifact } from '@/lib/server/shared-data-store';
 
 export const runtime = 'nodejs';
 
+/**
+ * Reads the 'file' field from a multipart/form-data request and returns
+ * its content as a Buffer, or null if the field is missing.
+ */
 async function parseUpload(req: Request): Promise<Buffer | null> {
   const form = await req.formData();
   const file = form.get('file');
@@ -11,6 +19,7 @@ async function parseUpload(req: Request): Promise<Buffer | null> {
   return Buffer.from(bytes);
 }
 
+/** Stores the frames ZIP and returns { ok: true }, or 404/500 on failure. */
 export async function POST(req: Request, context: { params: Promise<{ runId: string }> }) {
   const { runId } = await context.params;
   const bytes = await parseUpload(req);

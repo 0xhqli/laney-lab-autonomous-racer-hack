@@ -1,3 +1,9 @@
+/**
+ * Camera capture preview state — Zustand store.
+ * Holds the latest JPEG preview data URL (displayed in the CameraFeed HUD),
+ * the number of frames currently buffered in memory, recording status, and
+ * whether the picture-in-picture panel is visible.
+ */
 import { create } from 'zustand';
 import { CAPTURE_CONFIG } from '@/lib/config/capture-config';
 

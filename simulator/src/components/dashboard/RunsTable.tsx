@@ -39,6 +39,7 @@ export function RunsTable({
   // Only show capture column when at least one run has captures
   const hasCaptureRuns = useMemo(() => runs.some((r) => r.hasFrameCapture), [runs]);
 
+  /** Toggles the checkbox state for a single run row. */
   function toggleCheck(id: string) {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -47,14 +48,20 @@ export function RunsTable({
     });
   }
 
+  /** Selects all runs that have been flagged as potential anomalies. */
   function selectAllFlagged() {
     setChecked(new Set(flaggedIds));
   }
 
+  /** Clears all row selections. */
   function selectNone() {
     setChecked(new Set());
   }
 
+  /**
+   * Confirms and deletes all checked runs.
+   * Clears the selection after deletion regardless of outcome.
+   */
   function handleDeleteChecked() {
     if (checked.size === 0) return;
     if (!confirm(`Delete ${checked.size} run(s)? This removes their training data permanently.`)) return;

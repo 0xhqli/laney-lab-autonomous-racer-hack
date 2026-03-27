@@ -33,6 +33,10 @@ export function TrackCoverage({ runs }: { runs: TrainingRun[] }) {
   );
 }
 
+/**
+ * SVG top-down map for a single track showing all recorded driving positions
+ * across the given runs as a semi-transparent heatmap overlay.
+ */
 function TrackCoverageMap({ trackId, runs }: { trackId: string; runs: TrainingRun[] }) {
   const track = getTrack(trackId);
   const wp = track.waypoints;
@@ -52,7 +56,9 @@ function TrackCoverageMap({ trackId, runs }: { trackId: string; runs: TrainingRu
   const H = 400;
   const PAD = 30;
 
+  /** Maps a world-space X coordinate to SVG pixel space. */
   function tx(x: number) { return PAD + ((x - minX) / (maxX - minX)) * (W - PAD * 2); }
+  /** Maps a world-space Z coordinate to SVG pixel space. */
   function tz(z: number) { return PAD + ((z - minZ) / (maxZ - minZ)) * (H - PAD * 2); }
 
   // Track centerline path

@@ -9,6 +9,7 @@ import { useGameStore } from '@/lib/stores/game-store';
  */
 export function KeyboardHandler() {
   useEffect(() => {
+    /** Handles key-press events: pause/resume, throttle presets, and scroll prevention. */
     function onKeyDown(e: KeyboardEvent) {
       const store = useGameStore.getState();
 
@@ -40,6 +41,7 @@ export function KeyboardHandler() {
       store.setKey(e.key, true);
     }
 
+    /** Clears the key from the store when it is released. */
     function onKeyUp(e: KeyboardEvent) {
       useGameStore.getState().setKey(e.key, false);
     }

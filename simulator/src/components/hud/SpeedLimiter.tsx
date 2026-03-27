@@ -31,16 +31,19 @@ export function SpeedLimiter() {
     }
   }, [setMaxSpeedPct]);
 
+  /** Converts a speed percentage (MIN_PCT–100) to a pixel Y offset within the bar (0 = top). */
   const pctToY = (pct: number) => {
     // 100% = top (y=0), MIN_PCT = bottom (y=BAR_HEIGHT)
     return BAR_HEIGHT - ((pct - MIN_PCT) / (MAX_PCT - MIN_PCT)) * BAR_HEIGHT;
   };
 
+  /** Converts a pixel Y offset within the bar back to a speed percentage, clamped to valid range. */
   const yToPct = (y: number) => {
     const clamped = Math.max(0, Math.min(BAR_HEIGHT, y));
     return Math.round(MIN_PCT + ((BAR_HEIGHT - clamped) / BAR_HEIGHT) * (MAX_PCT - MIN_PCT));
   };
 
+  /** Updates the speed limit based on a pointer/touch clientY position over the bar. */
   const handleMove = useCallback(
     (clientY: number) => {
       if (!barRef.current) return;

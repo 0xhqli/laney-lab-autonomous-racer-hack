@@ -47,6 +47,11 @@ let scratchCanvas: HTMLCanvasElement | null = null;
 let scratchCtx: CanvasRenderingContext2D | null = null;
 let scratchPixels: Uint8Array | null = null;
 
+/**
+ * Lazily creates (or resizes) the single off-screen canvas and pixel buffer used
+ * to read pixels out of the WebGL render target. Reusing a single scratch canvas
+ * avoids repeated allocations on the hot frame-capture path.
+ */
 function ensureScratch(width: number, height: number) {
   if (!scratchCanvas) {
     scratchCanvas = document.createElement('canvas');
@@ -68,6 +73,11 @@ function ensureScratch(width: number, height: number) {
   return { canvas: scratchCanvas, ctx: scratchCtx, pixels: scratchPixels };
 }
 
+/**
+ * Flips the pixel buffer vertically.
+ * WebGL's readPixels returns rows bottom-to-top (OpenGL convention), but
+ * ImageData / canvas expects rows top-to-bottom.
+ */
 function flipRgbaY(src: Uint8Array, width: number, height: number): Uint8ClampedArray {
   const out = new Uint8ClampedArray(src.length);
   const stride = width * 4;
@@ -79,6 +89,7 @@ function flipRgbaY(src: Uint8Array, width: number, height: number): Uint8Clamped
   return out;
 }
 
+/** Encodes the canvas contents as a JPEG Blob at the given quality (0–1). */
 function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -89,6 +100,7 @@ function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob>
   });
 }
 
+/** Clears the in-memory frame buffer and resets preview state for a new run. */
 export function resetPendingCapturedFrames() {
   captureSession.frames = [];
   captureSession.busy = false;
@@ -96,6 +108,7 @@ export function resetPendingCapturedFrames() {
   useCapturePreviewStore.getState().reset();
 }
 
+/** Returns the number of JPEG frames currently buffered in memory (not yet flushed to IndexedDB). */
 export function getPendingCaptureFrameCount() {
   return captureSession.frames.length;
 }
@@ -107,6 +120,13 @@ export function __setPendingCapturedFramesForTest(frames: CapturedFrame[]) {
   useCapturePreviewStore.getState().setBufferedFrames(captureSession.frames.length);
 }
 
+/**
+ * Reads pixels from the WebGL render target, flips them vertically, encodes as JPEG,
+ * and pushes the frame into the in-memory capture buffer.
+ * Also publishes the raw RGBA pixels to the inference camera-frame buffer so the
+ * ONNX model can consume them in the same tick.
+ * Returns false if capture is disabled or if a previous capture is still in progress.
+ */
 export async function captureFrameFromRenderTarget(
   gl: THREE.WebGLRenderer,
   renderTarget: THREE.WebGLRenderTarget,
@@ -156,6 +176,11 @@ export async function captureFrameFromRenderTarget(
   }
 }
 
+/**
+ * Flushes all buffered JPEG frames to IndexedDB under the given run ID.
+ * Should be called when a run ends (from RunComplete). Returns the number of
+ * frames saved, or 0 if the buffer was empty.
+ */
 export async function finalizeCapturedFramesToIndexedDb(input: FinalizeCaptureInput): Promise<number> {
   const frames = captureSession.frames;
   if (frames.length === 0) {
