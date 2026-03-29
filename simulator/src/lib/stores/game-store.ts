@@ -59,6 +59,7 @@ interface GameState {
   // Unified directional input (written by KeyboardHandler, GamepadHandler, or TouchHandler)
   input: { steer: number; throttle: number; brake: boolean };
   setInput: (input: { steer: number; throttle: number; brake: boolean }) => void;
+  // 'keyboard' is also the default/fallback — does not guarantee a physical keyboard is present.
   activeInputDevice: 'keyboard' | 'gamepad' | 'touch';
   setActiveInputDevice: (device: 'keyboard' | 'gamepad' | 'touch') => void;
 
