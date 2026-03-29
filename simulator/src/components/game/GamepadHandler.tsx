@@ -38,6 +38,7 @@ export function GamepadHandler() {
 
       if (gp) {
         // Update device flag directly from poll — avoids event timing gaps
+        // Polling is intentional — gamepadconnected events are unreliable across browsers.
         if (store.activeInputDevice !== 'gamepad') store.setActiveInputDevice('gamepad');
 
         // Steer: negate axis so left stick left → steerTarget positive (left turn)
